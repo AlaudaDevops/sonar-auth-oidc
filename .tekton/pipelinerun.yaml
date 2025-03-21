@@ -1,0 +1,56 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  name: oidc-plugin-build
+  annotations:
+    pipelinesascode.tekton.dev/on-comment: "(/oidc-plugin-build)"
+    pipelinesascode.tekton.dev/on-cel-expression: |-
+      (target_branch == "main" || target_branch.startsWith("release-") || target_branch.startsWith("alauda.*") || event == "pull_request" )
+    pipelinesascode.tekton.dev/pipeline: "[.tekton/pipeline.yaml]"
+    pipelinesascode.tekton.dev/max-keep-runs: "5"
+spec:
+  timeouts:
+    pipeline: "1h"
+  pipelineRef:
+    name: oidc-plugin-build
+  params:
+    - name: git-url
+      value: "{{ repo_url }}"
+    - name: git-revision
+      value: "{{ source_branch }}"
+    - name: git-commit
+      value: "{{ revision }}"
+    - name: goals
+      value: 
+      - versions:set 
+      - deploy 
+      - -DskipTests 
+      - -DnewVersion=2.1.2 
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteMany
+          resources:
+            requests:
+              storage: 10Gi
+    - name: basic-auth
+      secret:
+        secretName: "{{ git_auth_secret }}"
+    - name: gitversion-config
+      configMap:
+        name: gitversion-config
+    - name: cache
+      persistentVolumeClaim:
+        claimName: gradle-cache
+    - name: maven-settings
+      secret:
+        secretName: sonar-oidc-maven-settings
+  taskRunTemplate:
+    podTemplate:
+      securityContext:
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: "OnRootMismatch"
